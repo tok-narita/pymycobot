@@ -1,3 +1,7 @@
+'''
+move end-effector to DictCoords{}
+'''
+
 import time
 import numpy as np
 import os
