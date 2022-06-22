@@ -27,7 +27,7 @@ if __name__=="__main__":
         theta_3 = theta_end - (theta_1+theta_2)
         theta_4 = rnd.uniform(0, 30) * yaw_sign
         theta_5 = 0 
-        mycobot.send_angles([theta_0, theta_1, theta_2, theta_3, theta_4, theta_5], 70)
+        mycobot.send_angles([theta_0, theta_1, theta_2, theta_3, theta_4, theta_5], 40)
        
         print("\n::send_angles() ==> angles [{:.1f} {:.1f} {:.1f} {:.1f} {:.1f} {:.1f}]".format(theta_0, theta_1, theta_2, theta_3, theta_4, theta_5))
         # time.sleep(3)

@@ -11,6 +11,9 @@ import pyrealsense2.pyrealsense2 as rs
 
 # sys.path.append("~/scara-robot")
 sys.path.append("../../scara-robot")
+# from my_utils import realsense_to_arm_position
+sys.path.append("../demo/")
+from port_setup import setup
 # import pprint
 # pprint.pprint(sys.path)
 import harvesting_movement
@@ -18,39 +21,39 @@ import tokuiten_scara
 from click_and_harvest import get_click_point
 # from my_utils import realsense_to_arm_position
 
-def setup():
-    """
-    Reference code: ../demo/port_setup.py
-    Modified MyCobot -> TokMyCobot
-    """
-    print("")
+# def setup():
+#     """
+#     Reference code: ../demo/port_setup.py
+#     Modified MyCobot -> TokMyCobot
+#     """
+#     print("")
 
-    plist = list(serial.tools.list_ports.comports())
-    idx = 1
-    for port in plist:
-        print("{} : {}".format(idx, port))
-        idx += 1
+#     plist = list(serial.tools.list_ports.comports())
+#     idx = 1
+#     for port in plist:
+#         print("{} : {}".format(idx, port))
+#         idx += 1
 
-    _in = input("\nPlease input 1 - {} to choice:".format(idx - 1))
-    port = str(plist[int(_in) - 1]).split(" - ")[0].strip()
-    print(port)
-    print("")
+#     _in = input("\nPlease input 1 - {} to choice:".format(idx - 1))
+#     port = str(plist[int(_in) - 1]).split(" - ")[0].strip()
+#     print(port)
+#     print("")
 
-    baud = 115200
-    # _baud = input("Please input baud(default:115200):")
-    # try:
-    #     baud = int(_baud)
-    # except Exception:
-    #     pass
-    # print(baud)
-    # print("")
+#     baud = 115200
+#     # _baud = input("Please input baud(default:115200):")
+#     # try:
+#     #     baud = int(_baud)
+#     # except Exception:
+#     #     pass
+#     # print(baud)
+#     # print("")
 
-    DEBUG = False
-    f = input("Wether DEBUG mode[Y/n]:")
-    if f in ["y", "Y", "yes", "Yes"]:
-        DEBUG = True
-    mc = TokMyCobot(port, baud, debug=DEBUG)
-    return mc
+#     DEBUG = False
+#     f = input("Wether DEBUG mode[Y/n]:")
+#     if f in ["y", "Y", "yes", "Yes"]:
+#         DEBUG = True
+#     mc = MyCobot(port, baud, debug=DEBUG)
+#     return mc
 
 def move_cobot(mycobot, rnd):
     """
@@ -64,7 +67,7 @@ def move_cobot(mycobot, rnd):
     theta_3 = theta_end - (theta_1+theta_2)
     theta_4 = rnd.uniform(0, 30) * yaw_sign
     theta_5 = 0 
-    mycobot.send_angles([theta_0, theta_1, theta_2, theta_3, theta_4, theta_5], 70)
+    mycobot.send_angles([theta_0, theta_1, theta_2, theta_3, theta_4, theta_5], 30)
        
     print("\n::send_angles() ==> angles [{:.1f} {:.1f} {:.1f} {:.1f} {:.1f} {:.1f}]".format(theta_0, theta_1, theta_2, theta_3, theta_4, theta_5))
     # time.sleep(3)
@@ -102,6 +105,7 @@ def arm_reachable_check(x:float, y:float, z:float, tdof_scara) -> bool:
     """
     HACKME: For checking z-value, if-statement is used.
     """
+    print(f"x_target: {x:.2f}, y_target: {y:.2f}, z_target: {z:.2f}")
     if z<5/100 or 45/100<z:
         return False
     try:
@@ -111,12 +115,28 @@ def arm_reachable_check(x:float, y:float, z:float, tdof_scara) -> bool:
         return False
 
 
+
+def convert(realsense_point_3D):
+    """
+    Basically, this function is same as my_utils/realsense_to_arm_position.py/
+    However, I could not import because of relative path!!
+    """
+    transformation = np.loadtxt("../../scara-robot/configulation/transformation.matrix")
+    realsense_point_3D.append(1.0)
+    np_realsense_point_3D = np.array(realsense_point_3D)
+    position_arm_coordination = np.matmul(transformation, np_realsense_point_3D)
+    arm_x = position_arm_coordination[0]
+    arm_y = position_arm_coordination[1]
+    arm_z = position_arm_coordination[2]
+    return [arm_x, arm_y, arm_z]
+
 class ClickPointManager():
     def __init__(self, tsr):
         self.flag_click = False
         self.point_3D = None
         self.coords_target = None
         self.depth_frame = None
+        self.get_coords = False
 
     def update_depth_frame(self, depth_frame):
         self.depth_frame = depth_frame
@@ -142,6 +162,9 @@ class ClickPointManager():
         # y_target = y_target + 10
         # print("point(rs): ", self.point_3D)
         # print("point(arm): ", self.coords_target)
+        input_charactors  = input("type \"ok\" to move arm: ")
+        if input_charactors == "ok":
+            self.get_coords = True
 
     
 
@@ -150,40 +173,51 @@ if __name__=='__main__':
     result = ResultAgg()
     rnd = np.random.RandomState(42)
 
-    # For Camera
-    pipeline = rs.pipeline()
-    config = rs.config()
-    config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
-    config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
 
-    print("Start streaming")
-    pipeline.start(config)
+    while True: # Test-loop
 
-    align_to = rs.stream.color
-    align = rs.align(align_to)
+        # while True:
+        #     # Move mycobot randomly
+        #     time.sleep(1)
+        #     if mycobot.get_angles()!=[]:
+        #         move_cobot(mycobot=mycobot, rnd=rnd)
+        #         print("\nMovement of arm was successed! --> angles", mycobot.get_angles())
+        #         break
+        #     else:
+        #         move_cobot(mycobot=mycobot, rnd=rnd)
 
-    try:
-        # FIXME: Path is not relative
-        file_id = open("../../scara-robot/configulation/present_z_height.data", "r")
-        present_height = float(file_id.read())
-    except OSError:
-        print("Command line argument needed: Put ~/scara-robot/configulation/present_z_height.data")
-        exit()
+        # For Camera
+        pipeline = rs.pipeline()
+        config = rs.config()
+        config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+        config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
 
-    # For IK
-    tdof_scara = tokuiten_scara.ThreeDoF_SCARA()
-    # For Reaching, Gripping 
-    tsr = harvesting_movement.TokuitenScaraRobot(present_height)
-    # present_height = tsr.get_z_height()
+        print("Start streaming")
+        pipeline.start(config)
 
-    click_point_manager = ClickPointManager(tsr)
+        align_to = rs.stream.color
+        align = rs.align(align_to)
 
-    cv2.namedWindow('RealsenseImage', cv2.WINDOW_AUTOSIZE)
-    cv2.setMouseCallback('RealsenseImage',click_point_manager.get_click_coords)
+        try:
+            # FIXME: Path is not relative
+            file_id = open("../../scara-robot/configulation/present_z_height.data", "r")
+            present_height = float(file_id.read())
+        except OSError:
+            print("Command line argument needed: Put ~/scara-robot/configulation/present_z_height.data")
+            exit()
 
-    while True:
-        # Move mycobot randomly
-        move_cobot(mycobot=mycobot, rnd=rnd)
+        # For IK
+        tdof_scara = tokuiten_scara.ThreeDoF_SCARA()
+        # For Reaching, Gripping 
+        tsr = harvesting_movement.TokuitenScaraRobot(present_height)
+        # present_height = tsr.get_z_height()
+
+        click_point_manager = ClickPointManager(tsr)
+
+        cv2.namedWindow('RealsenseImage', cv2.WINDOW_AUTOSIZE)
+        cv2.setMouseCallback('RealsenseImage', click_point_manager.get_click_coords)
+
+
         # Show Depth&Color Image
         while cv2.waitKey(1)<0: #click_point_manager.flag_click:
             frames = pipeline.wait_for_frames()
@@ -202,16 +236,77 @@ if __name__=='__main__':
             cv2.imshow("RealsenseImage",images)
 
             click_point_manager.update_depth_frame(depth_frame=depth_frame)
-            if click_point_manager.flag_click:
-                input_charactors  = input("type \"ok\" to move arm: ")
-                if input_charactors == "ok":
-                    break
-                else:
-                    pass
-        
+                
+            if click_point_manager.get_coords:
+                print(click_point_manager.get_coords)
+                click_point_manager.get_coords = False
+                break
+            else:
+                click_point_manager.get_coords = False
+    
         (x_target, y_target, z_target) = click_point_manager.coords_target
-        if arm_reachable_check(x=x_target, y=y_target, z=z_target, tdof_scara=tdof_scara):
-            break
+        
+        if not arm_reachable_check(x=x_target, y=y_target, z=z_target, tdof_scara=tdof_scara):
+            print("arm_reachable_check(x=x_target, y=y_target, z=z_target, tdof_scara=tdof_scara)")
+            print(arm_reachable_check(x=x_target, y=y_target, z=z_target, tdof_scara=tdof_scara))
+            continue
+        else:
+            pipeline.stop()
+            cv2.waitKey(1)
+            cv2.destroyAllWindows()
+            cv2.waitKey(1)
 
-    result.judge_calc()
-    result.show_result()
+        """
+        This part is same as click_and harvest.py
+        """
+        x_home_position = 0.0
+        y_home_position = 370.0/1000
+        tool_angle_home_rad = 0.0
+
+        tool_angle_target_rad = 0.0/180*math.pi
+        Preparation_distance_from_tomato = 50.0/1000 # [m]
+
+        x_front = x_target + Preparation_distance_from_tomato * math.sin( tool_angle_target_rad )
+        y_front = y_target - Preparation_distance_from_tomato * math.cos( tool_angle_target_rad )
+
+
+        z_present = tsr.get_z_height() 
+        tsr.reach_joint_space(x_home_position, y_home_position, z_present, tool_angle_home_rad)
+        file_id = open("../../scara-robot/configulation/present_z_height.data", "w")
+        file_id.write(str( float(z_present) ))
+        file_id.close()
+
+
+        # Preparation
+        tsr.open_gripper()
+        tsr.move_gripper_initial_position()
+
+        # Reaching to the front side of a target tomato
+        tsr.reach_joint_space(x_front, y_front, z_target, tool_angle_target_rad)
+        file_id = open("../../scara-robot/configulation/present_z_height.data", "w")
+        file_id.write(str( float(z_present) ))
+        file_id.close()
+
+        time.sleep(1)
+
+        tsr.reach(x_target, y_target, z_target, tool_angle_target_rad)
+        file_id = open("../../scara-robot/configulation/present_z_height.data", "w")
+        file_id.write(str( float(z_present) ))
+        file_id.close()
+
+        tsr.close_gripper()
+        # tsr.twist_gripper()
+
+        tsr.move_gripper_initial_position()
+
+        z_present = tsr.get_z_height()
+        tsr.reach_joint_space(x_home_position, y_home_position, z_present, tool_angle_home_rad)
+        file_id = open("../../scara-robot/configulation/present_z_height.data", "w")
+        file_id.write(str( float(z_present) ))
+        file_id.close()
+
+        time.sleep(3)
+        tsr.open_gripper()
+
+        result.judge_calc()
+        result.show_result()
